@@ -1,4 +1,7 @@
 com\ecrtracker\config\AdminObjectConfigReader.class
+com\ecrtracker\repository\ECRRepository.class
+com\ecrtracker\trigger\ECRTriggerJPO.class
+com\ecrtracker\exception\InvalidStatusTransitionException.class
 com\ecrtracker\Main.class
 com\ecrtracker\model\Part.class
 com\ecrtracker\model\ECR.class
