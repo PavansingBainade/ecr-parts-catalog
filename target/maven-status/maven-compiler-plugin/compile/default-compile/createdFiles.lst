@@ -1,0 +1,4 @@
+com\ecrtracker\config\AdminObjectConfigReader.class
+com\ecrtracker\Main.class
+com\ecrtracker\model\Part.class
+com\ecrtracker\model\ECR.class
