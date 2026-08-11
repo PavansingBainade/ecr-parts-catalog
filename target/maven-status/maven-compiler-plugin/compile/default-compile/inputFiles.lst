@@ -8,6 +8,8 @@ P:\TCS Kalmar Training\ECR-Parts-Catalog\src\main\java\com\ecrtracker\PartSuppli
 P:\TCS Kalmar Training\ECR-Parts-Catalog\src\main\java\com\ecrtracker\repository\ECRRepository.java
 P:\TCS Kalmar Training\ECR-Parts-Catalog\src\main\java\com\ecrtracker\repository\PartRepository.java
 P:\TCS Kalmar Training\ECR-Parts-Catalog\src\main\java\com\ecrtracker\trigger\ECRTriggerJPO.java
+P:\TCS Kalmar Training\ECR-Parts-Catalog\src\main\java\com\ecrtracker\web\ECRAdminServlet.java
+P:\TCS Kalmar Training\ECR-Parts-Catalog\src\main\java\com\ecrtracker\web\ECRDetailServlet.java
 P:\TCS Kalmar Training\ECR-Parts-Catalog\src\main\java\com\ecrtracker\web\ECRWebServiceServlet.java
 P:\TCS Kalmar Training\ECR-Parts-Catalog\src\main\java\com\ecrtracker\web\PartServlet.java
 P:\TCS Kalmar Training\ECR-Parts-Catalog\src\main\java\com\ecrtracker\web\PartSyncServlet.java

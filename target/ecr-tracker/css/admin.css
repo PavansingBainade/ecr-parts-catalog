@@ -1,0 +1,65 @@
+body {
+    font-family: Arial, sans-serif;
+    background: #f4f6f8;
+    margin: 0;
+    padding: 30px;
+}
+
+.container {
+    max-width: 1100px;
+    margin: auto;
+    background: white;
+    padding: 30px;
+    border-radius: 8px;
+}
+
+h1 {
+    margin-bottom: 25px;
+}
+
+.filter-section {
+    margin-bottom: 20px;
+}
+
+#statusFilter {
+    padding: 8px;
+    margin-left: 10px;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+th,
+td {
+    padding: 12px;
+    border-bottom: 1px solid #ddd;
+    text-align: left;
+}
+
+th {
+    background: #f0f0f0;
+}
+
+.status {
+    padding: 5px 10px;
+    border-radius: 12px;
+    font-size: 13px;
+}
+
+.draft {
+    background: #fff3cd;
+}
+
+.in-review {
+    background: #cfe2ff;
+}
+
+.approved {
+    background: #d1e7dd;
+}
+
+.rejected {
+    background: #f8d7da;
+}
