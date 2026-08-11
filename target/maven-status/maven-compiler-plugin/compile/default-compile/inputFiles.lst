@@ -1,7 +1,13 @@
+P:\TCS Kalmar Training\ECR-Parts-Catalog\src\main\java\com\ecrtracker\client\PartSupplierClient.java
 P:\TCS Kalmar Training\ECR-Parts-Catalog\src\main\java\com\ecrtracker\config\AdminObjectConfigReader.java
 P:\TCS Kalmar Training\ECR-Parts-Catalog\src\main\java\com\ecrtracker\exception\InvalidStatusTransitionException.java
 P:\TCS Kalmar Training\ECR-Parts-Catalog\src\main\java\com\ecrtracker\Main.java
 P:\TCS Kalmar Training\ECR-Parts-Catalog\src\main\java\com\ecrtracker\model\ECR.java
 P:\TCS Kalmar Training\ECR-Parts-Catalog\src\main\java\com\ecrtracker\model\Part.java
+P:\TCS Kalmar Training\ECR-Parts-Catalog\src\main\java\com\ecrtracker\PartSupplierTest.java
 P:\TCS Kalmar Training\ECR-Parts-Catalog\src\main\java\com\ecrtracker\repository\ECRRepository.java
+P:\TCS Kalmar Training\ECR-Parts-Catalog\src\main\java\com\ecrtracker\repository\PartRepository.java
 P:\TCS Kalmar Training\ECR-Parts-Catalog\src\main\java\com\ecrtracker\trigger\ECRTriggerJPO.java
+P:\TCS Kalmar Training\ECR-Parts-Catalog\src\main\java\com\ecrtracker\web\ECRWebServiceServlet.java
+P:\TCS Kalmar Training\ECR-Parts-Catalog\src\main\java\com\ecrtracker\web\PartServlet.java
+P:\TCS Kalmar Training\ECR-Parts-Catalog\src\main\java\com\ecrtracker\web\PartSyncServlet.java
