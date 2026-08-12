@@ -19,7 +19,7 @@ public class ECRRepository {
 
         for (ECR ecr : ecrList) {
 
-            if (ecr.getId().equals(id)) {
+            if (id != null && id.equals(ecr.getId())) {
                 return ecr;
             }
         }
@@ -28,6 +28,29 @@ public class ECRRepository {
     }
 
     public void save(ECR ecr) {
+
+        // Generate ID if not provided
+        if (ecr.getId() == null) {
+
+            long nextId = ecrList.stream()
+                    .map(ECR::getId)
+                    .filter(id -> id != null)
+                    .mapToLong(Long::longValue)
+                    .max()
+                    .orElse(100L) + 1;
+
+            ecr.setId(nextId);
+        }
+
+        // Generate creation date if not provided
+        if (ecr.getDateCreated() == null ||
+                ecr.getDateCreated().trim().isEmpty()) {
+
+            ecr.setDateCreated(
+                    java.time.LocalDate.now().toString()
+            );
+        }
+
         ecrList.add(ecr);
     }
 

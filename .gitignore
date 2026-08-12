@@ -1,0 +1,15 @@
+# Maven
+target/
+
+# Vue / Node
+ecr-parts-catalog-vue/node_modules/
+ecr-parts-catalog-vue/dist/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
