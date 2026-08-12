@@ -1,58 +1,61 @@
 <script setup>
-import { ref, onMounted } from 'vue'
-import api from '../services/api'
+import { ref, computed, onMounted } from 'vue'
+import { useEcrStore } from '../stores/ecrStore'
 import StatusBadge from '../components/StatusBadge.vue'
+import { RouterLink } from 'vue-router'
 
-const ecrList = ref([])
-const loading = ref(true)
-const error = ref('')
+const ecrStore = useEcrStore()
 
 const selectedStatus = ref('ALL')
 
-const filteredEcrs = () => {
+onMounted(() => {
+  ecrStore.fetchECRs()
+})
+
+const filteredEcrs = computed(() => {
   if (selectedStatus.value === 'ALL') {
-    return ecrList.value
+    return ecrStore.ecrs
   }
 
-  return ecrList.value.filter(
+  return ecrStore.ecrs.filter(
     ecr => ecr.status === selectedStatus.value
   )
-}
-
-onMounted(async () => {
-  try {
-    const response = await api.get('/ecrs')
-    ecrList.value = response.data
-  } catch (err) {
-    error.value = 'Failed to load ECRs'
-    console.error(err)
-  } finally {
-    loading.value = false
-  }
 })
 </script>
 
 <template>
-  <div>
-    <h1>ECR List</h1>
 
-    <p v-if="loading">Loading ECRs...</p>
+  <h1>ECR List</h1>
 
-    <p v-else-if="error">
-      {{ error }}
-    </p>
+  <p v-if="ecrStore.loading">
+    Loading ECRs...
+  </p>
+
+  <p v-else-if="ecrStore.error">
+    {{ ecrStore.error }}
+  </p>
+
+  <div v-else>
+
     <div>
-    <label for="statusFilter">Filter by Status: </label>
+      <label for="statusFilter">
+        Filter by Status:
+      </label>
 
-    <select id="statusFilter" v-model="selectedStatus">
+      <select
+        id="statusFilter"
+        v-model="selectedStatus"
+      >
         <option value="ALL">All</option>
         <option value="Draft">Draft</option>
         <option value="InReview">InReview</option>
         <option value="Approved">Approved</option>
         <option value="Rejected">Rejected</option>
-    </select>
+      </select>
     </div>
+
     <table>
+
       <thead>
         <tr>
           <th>ID</th>
@@ -65,18 +68,34 @@ onMounted(async () => {
       </thead>
 
       <tbody>
+
         <tr
-            v-for="ecr in filteredEcrs()"
-            :key="ecr.id"
+          v-for="ecr in filteredEcrs"
+          :key="ecr.id"
         >
-          <td>{{ ecr.id }}</td>
+          <td>
+            <RouterLink :to="`/ecrs/${ecr.id}`">
+              {{ ecr.id }}
+            </RouterLink>
+          </td>
+
           <td>{{ ecr.title }}</td>
-          <td><StatusBadge :status="ecr.status" /></td>
+
+          <td>
+            <StatusBadge :status="ecr.status" />
+          </td>
+
           <td>{{ ecr.priority }}</td>
+
           <td>{{ ecr.requestedBy }}</td>
+
           <td>{{ ecr.dateCreated }}</td>
         </tr>
+
       </tbody>
+
     </table>
+
   </div>
+
 </template>
