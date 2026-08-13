@@ -1,945 +1,513 @@
-# ECR Parts Catalog — Architecture & Technical Documentation
+# Architecture – ECR Parts Catalog
 
-## 1. Project Overview
+## 1. Purpose
 
-The ECR Parts Catalog is a full-stack web application for managing
-Engineering Change Requests (ECRs).
+This document describes the architecture that is actually implemented in the repository.
 
-The application demonstrates an enterprise-style architecture where users
-can create ECRs, view ECRs, inspect ECR details, and move ECRs through a
-controlled status workflow.
+The application has **two UI paths**:
 
-The project also demonstrates concepts related to the
-3DEXPERIENCE / ENOVIA development ecosystem, including:
+1. A Vue 3 single-page application that consumes REST APIs.
+2. JSP administrative screens that use Servlet/MVC, JSTL, and Expression Language.
 
-- REST APIs
-- JPO-style business logic
-- Trigger concepts
-- Admin Object configuration
-- TCL scripting
-- MQL concepts
-- SOAP integration concepts
-- Maven
-- Tomcat
-- Git
-- Vue.js
-- Vue Router
-- Pinia
+The backend is a Java Servlet WAR deployed to Apache Tomcat. Data is stored in memory.
 
----
-
-# 2. Technology Stack
-
-## Frontend
-
-- Vue.js
-- Vue Router
-- Pinia
-- Axios
-- HTML
-- CSS
-- JavaScript
-
-## Backend
-
-- Java
-- Java Servlets
-- Jackson
-- REST API
-- Maven
-- Apache Tomcat
-
-## Business Logic
-
-- ECRTriggerJPO
-- InvalidStatusTransitionException
-- AdminObjectConfigReader
-- adminObjects.xml
-
-## Supporting Enterprise Concepts
-
-- TCL
-- MQL
-- SOAP
-- 3DEXPERIENCE / ENOVIA concepts
-
-## Version Control
-
-- Git
-- GitHub
-
----
-
-# 3. High-Level Architecture
-
-The application follows a layered architecture.
+## 2. System context
 
 ```text
-                    USER
-                     |
-                     v
-            +------------------+
-            |   Vue.js UI      |
-            |                  |
-            | ECR Dashboard    |
-            | ECR Detail       |
-            | Create ECR       |
-            +--------+---------+
-                     |
-                     | Axios / HTTP
-                     v
-            +------------------+
-            | Java REST API    |
-            |                  |
-            | Servlet          |
-            +--------+---------+
-                     |
-                     v
-            +------------------+
-            | ECR Repository   |
-            |                  |
-            | In-memory list   |
-            +--------+---------+
-                     |
-                     v
-            +------------------+
-            | Business Logic   |
-            |                  |
-            | ECRTriggerJPO    |
-            +--------+---------+
-                     |
-                     v
-            +------------------+
-            | Admin Config     |
-            |                  |
-            | adminObjects.xml |
-            +------------------+
-````
+                           Browser / User
+                         /               \
+                        /                 \
+                       v                   v
+              Vue 3 SPA                 JSP Admin
+                  |                         |
+          Router + Pinia                  Servlet
+                  |                       /     \
+                Axios                    /       \
+                  |                     v         v
+                  |              ECR Repository  Part Repository
+                  |                     |
+                  +-----------> REST    |
+                               API      |
+                                  \     |
+                                   v    v
+                                Java Backend
+```
 
----
-
-# 4. Frontend Architecture
-
-The Vue application is responsible for the user interface and user
-interaction.
-
-Main frontend components include:
+## 3. Vue architecture
 
 ```text
-src/
-|
-+-- views/
-|   |
-|   +-- ECRListView.vue
-|   +-- ECRDetailView.vue
-|   +-- ECRForm.vue
-|
-+-- stores/
-|   |
-|   +-- ecrStore.js
-|
-+-- router/
-|   |
-|   +-- index.js
-|
-+-- services/
-    |
-    +-- api.js
-```
-
-## ECRListView
-
-The list view displays ECR records in a table.
-
-It provides:
-
-* ECR ID
-* Title
-* Status
-* Priority
-* Requested By
-* Date Created
-* Status filtering
-* Navigation to ECR details
-
-ECR IDs use Vue Router links to navigate to:
-
-```
-/ecrs/{id}
-```
-
----
-
-## ECRDetailView
-
-The detail view displays a single ECR.
-
-It shows:
-
-* ECR title
-* Description
-* Status
-* Priority
-* Requested By
-* Date Created
-* Workflow state
-* Valid status transition buttons
-
-The available status buttons are determined by the current status.
-
-Example:
-
-```text
-Draft
+main.js
   |
-  v
-InReview
- /      \
-v        v
-Approved Rejected
-            |
-            v
-          Draft
+  +--> createApp(App)
+  |
+  +--> Pinia
+  |
+  +--> Vue Router
+             |
+             +--> /
+             |     ECRListView.vue
+             |
+             +--> /ecrs/new
+             |     ECRForm.vue
+             |
+             +--> /ecrs/:id
+                   ECRDetailView.vue
 ```
 
----
-
-## ECRForm
-
-The create form allows users to create a new ECR.
-
-Fields include:
-
-* Title
-* Description
-* Priority
-
-The form sends a POST request to:
-
-```
-POST /api/ecrs
-```
-
-The backend generates:
-
-* ID
-* Status
-* Date Created
-
-New ECRs always start in:
-
-```
-Draft
-```
-
----
-
-# 5. Pinia State Management
-
-Pinia is used to manage shared ECR state.
-
-The store contains:
+### State/data flow
 
 ```text
-ecrs
-loading
-error
+ECRListView / ECRDetailView
+            ↓
+        ecrStore.js
+            ↓
+        services/api.js
+            ↓
+          Axios
+            ↓
+http://localhost:8080/ecr-tracker/api
 ```
 
-It also provides:
+Pinia stores ECRs in memory on the client and refreshes them through `GET /api/ecrs`.
+
+## 4. Backend architecture
 
 ```text
-draftCount
+HTTP
+ ↓
+Servlet Layer
+ ├── ECRWebServiceServlet
+ ├── PartServlet
+ ├── PartSyncServlet
+ ├── ECRAdminServlet
+ └── ECRDetailServlet
+ ↓
+Repository / Client Layer
+ ├── ECRRepository
+ ├── PartRepository
+ └── PartSupplierClient
+ ↓
+Model
+ ├── ECR
+ └── Part
 ```
 
-which counts ECRs whose status is:
-
-```
-Draft
-```
-
-The store also contains actions such as:
+Cross-cutting:
 
 ```text
-fetchECRs()
-updateStatus()
+CorsFilter
 ```
 
-Using Pinia avoids passing ECR data through multiple components using
-props and events.
-
-The list and detail views can access the same shared ECR state.
-
----
-
-# 6. Vue Router
-
-Vue Router provides client-side navigation.
-
-Main routes:
+Workflow/configuration:
 
 ```text
-/                  → ECRListView
-/ecrs/:id          → ECRDetailView
-/create            → ECRForm
-```
-
-Example:
-
-```text
-http://localhost:5173/ecrs/101
-```
-
-The `:id` value is read using Vue Router's `useRoute()`.
-
----
-
-# 7. REST API
-
-The Java backend exposes REST endpoints.
-
-## Get ECRs
-
-```text
-GET /api/ecrs
-```
-
-Returns the available ECR records.
-
----
-
-## Create ECR
-
-```text
-POST /api/ecrs
-```
-
-Example request:
-
-```json
-{
-  "title": "Wheel Design Change",
-  "description": "Update wheel assembly",
-  "priority": "HIGH",
-  "requestedBy": "Pavan"
-}
-```
-
-The backend controls:
-
-```text
-id
-status
-dateCreated
-```
-
-The new ECR starts in:
-
-```text
-Draft
-```
-
----
-
-## Update Status
-
-```text
-PUT /api/ecrs/{id}/status
-```
-
-Example:
-
-```json
-{
-  "status": "InReview"
-}
-```
-
-The backend validates the transition before updating the ECR.
-
----
-
-# 8. Complete Request Flow
-
-## Create ECR
-
-```text
-User
- |
- | Submit Create ECR form
- v
-Vue ECRForm
- |
- | POST /api/ecrs
- v
 ECRWebServiceServlet
- |
- | Validate request
- v
-ECRRepository.save()
- |
- | Generate ID
- | Set Draft
- | Generate date
- v
-Response 201 Created
- |
- v
-Vue
- |
- v
-ECR List
-```
-
----
-
-# 9. Status Update Flow
-
-The most important business flow in the application is the status update.
-
-```text
-User clicks "Approve"
-        |
-        v
-ECRDetailView.vue
-        |
-        v
-Pinia ecrStore.updateStatus()
-        |
-        v
-Axios
-        |
-        | PUT /api/ecrs/{id}/status
-        v
-ECRWebServiceServlet
-        |
-        v
-ECRRepository.updateStatus()
-        |
-        v
-ECRTriggerJPO.validateTransition()
-        |
-        v
+        ↓
+AdminObjectConfigReader
+        ↓
 adminObjects.xml
-        |
-        v
-Allowed transition?
-       / \
-     YES  NO
-      |    |
-      |    v
-      |  Exception
-      |    |
-      v    v
- Update   HTTP 400
- ECR      Error
-      |
-      v
- HTTP 200
-      |
-      v
- Vue UI
+        ↓
+ECRTriggerJPO
+        ↓
+ECRRepository.updateStatus()
 ```
 
----
+## 5. REST ECR flow
 
-# 10. ECRTriggerJPO
-
-`ECRTriggerJPO` contains the status transition validation logic.
-
-Its responsibility is to determine whether a requested transition is
-allowed.
-
-Conceptually:
+### Read
 
 ```text
-Current Status
-      |
-      v
-Allowed Transitions
-      |
-      v
-Requested New Status
-      |
-      v
-Valid?
- /    \
-YES    NO
- |      |
- v      v
-Update  Exception
+Vue
+ ↓
+Pinia
+ ↓
+Axios GET /api/ecrs
+ ↓
+ECRWebServiceServlet.doGet()
+ ↓
+ECRRepository.getAll()
+ ↓
+Jackson JSON
+ ↓
+Vue
 ```
 
-If the transition is invalid, the application throws:
+### Create
 
 ```text
-InvalidStatusTransitionException
+ECRForm.vue
+ ↓
+Axios POST /api/ecrs
+ ↓
+ECRWebServiceServlet.doPost()
+ ↓
+Validate title/requester/priority
+ ↓
+Clear client ID/status/date
+ ↓
+ECRRepository.save()
+ ↓
+Generate ID
+ ↓
+Set Draft
+ ↓
+Generate date
+ ↓
+Return HTTP 201 JSON
 ```
 
-The servlet converts the error into an HTTP 400 response.
+### Status update
 
-The Vue application displays the backend error to the user.
+```text
+ECRDetailView.vue
+ ↓
+Pinia updateStatus()
+ ↓
+Axios PUT /api/ecrs/{id}/status
+ ↓
+ECRWebServiceServlet.doPut()
+ ↓
+ECRRepository.updateStatus()
+ ↓
+ECRTriggerJPO.validateTransition()
+ ↓
+allowedTransitions loaded from adminObjects.xml
+ ↓
+Valid? ── No → HTTP 400
+   |
+  Yes
+   ↓
+Set new status
+   ↓
+Return updated ECR
+```
 
----
+## 6. Workflow architecture
 
-# 11. Admin Object Configuration
-
-The workflow is configured in:
+The workflow source of truth is:
 
 ```text
 src/main/resources/adminObjects.xml
 ```
 
-Current workflow:
+It contains:
 
 ```text
-Draft → InReview
-
-InReview → Approved
-InReview → Rejected
-
-Rejected → Draft
+Draft      → InReview
+InReview   → Approved
+InReview   → Rejected
+Rejected   → Draft
 ```
 
-Approved has no outgoing transition.
-
-This configuration is loaded by:
-
-```text
-AdminObjectConfigReader
-```
-
-The servlet passes the configuration to the trigger validation logic.
-
-This separates workflow configuration from the core validation code.
-
----
-
-# 12. Repository Layer
-
-`ECRRepository` is responsible for storing and retrieving ECR objects.
-
-The current implementation uses an in-memory:
+`AdminObjectConfigReader` parses the XML using DOM APIs and creates:
 
 ```java
-List<ECR>
+Map<String, List<String>>
 ```
 
-The repository provides operations such as:
+The trigger does not hard-code the XML itself. It receives the parsed transition map.
 
-```text
-getAll()
-getById()
-save()
-updateStatus()
-getByStatus()
-getAllTitles()
-```
+This gives the application a configuration-driven workflow.
 
-The current implementation is intentionally simple and does not use a
-database.
+## 7. JPO-style trigger
 
-If this were extended into a production system, the repository could be
-replaced with a database-backed persistence layer without changing the
-frontend architecture.
+`ECRTriggerJPO` is intentionally named to represent the ENOVIA JPO concept.
 
----
-
-# 13. Backend Validation
-
-The backend is responsible for validating create requests.
-
-Required fields include:
-
-```text
-title
-requestedBy
-priority
-```
-
-Priority must be one of:
-
-```text
-LOW
-MEDIUM
-HIGH
-```
-
-The client cannot control:
-
-```text
-id
-status
-dateCreated
-```
-
-These values are controlled by the backend.
-
-This prevents a client from creating an ECR such as:
-
-```json
-{
-  "id": 9999,
-  "status": "Approved"
-}
-```
-
-and bypassing the workflow.
-
----
-
-# 14. TCL Trigger Simulation
-
-The project contains:
-
-```text
-tcl/ecr_trigger.tcl
-```
-
-This script demonstrates the TCL representation of the ECR status
-transition logic.
-
-The TCL script uses:
-
-* Associative arrays
-* Procedures
-* `lsearch`
-* Status transition validation
-
-Example:
-
-```text
-Draft → InReview
-```
-
-is valid.
-
-While:
-
-```text
-Draft → Approved
-```
-
-is invalid.
-
-The TCL script is a simulation for learning purposes.
-
-It is not executed inside a real ENOVIA/3DEXPERIENCE server.
-
----
-
-# 15. Simulated MQL
-
-The project contains:
-
-```text
-src/main/java/com/ecrtracker/mql/SimulatedMQL.java
-```
-
-This demonstrates the concept of querying business objects by field and
-value.
-
-Example:
+Actual implementation:
 
 ```java
-queryByField(ecrs, "status", "Draft");
+validateTransition(currentStatus, newStatus, allowedTransitions)
 ```
 
-This conceptually represents an MQL query such as:
+It checks whether the new state is contained in the configured list.
+
+Important distinction:
 
 ```text
-temp query bus ECR * *
-where "status == Draft";
+Real ENOVIA JPO      → Not used
+Java JPO-style class → Implemented
 ```
 
-The implementation uses Java Streams instead of a real MQL interpreter.
+## 8. JSP / Servlet MVC architecture
+
+The project also contains a traditional Java web MVC path.
+
+### List screen
+
+```text
+GET /admin/ecrs
+      ↓
+ECRAdminServlet
+      ↓
+ECRRepository
+      ↓
+request.setAttribute("ecrList", ...)
+      ↓
+ecrList.jsp
+```
+
+`ecrList.jsp` renders the list using JSTL and EL.
+
+### Detail screen
+
+```text
+GET /admin/ecr?id=101
+      ↓
+ECRDetailServlet
+      ↓
+ECRRepository.getById()
+      ↓
+PartRepository.getAll()
+      ↓
+filter linkedEcrId == ecr.id
+      ↓
+request.setAttribute("ecr", ...)
+request.setAttribute("linkedParts", ...)
+      ↓
+ecrDetail.jsp
+```
+
+## 9. JSP technology details
+
+### JSP
+
+The actual views are:
+
+```text
+src/main/webapp/ecrList.jsp
+src/main/webapp/ecrDetail.jsp
+```
+
+### JSTL
+
+The JSPs use the JSTL core tag library:
+
+```jsp
+<%@ taglib prefix="c" uri="http://java.sun.com/jsp/jstl/core" %>
+```
+
+Examples actually used:
+
+```jsp
+<c:forEach>
+<c:choose>
+<c:when>
+<c:otherwise>
+```
+
+### Expression Language
+
+The views access JavaBean properties using EL:
+
+```jsp
+${ecr.id}
+${ecr.title}
+${ecr.description}
+${ecr.status}
+${ecr.priority}
+${ecr.requestedBy}
+${ecr.dateCreated}
+
+${part.id}
+${part.partNumber}
+${part.name}
+${part.category}
+${part.price}
+```
+
+They also use:
+
+```jsp
+${empty linkedParts}
+${pageContext.request.contextPath}
+```
+
+### MVC responsibilities
+
+| Layer | Responsibility |
+|---|---|
+| Servlet | Controller |
+| Repository | Data access abstraction |
+| ECR / Part | Model / JavaBeans |
+| JSP | View |
+| JSTL | View-side control structures |
+| EL | View-side property access |
+
+This is a real implemented Servlet/MVC flow.
+
+## 10. JSP data isolation
+
+A significant architectural detail is that the JSP servlets instantiate their own repositories and seed sample data.
 
 Therefore:
 
 ```text
-SimulatedMQL = learning/demo implementation
+REST ECRWebServiceServlet
+        |
+        +--> its own ECRRepository
+
+JSP ECRAdminServlet
+        |
+        +--> its own ECRRepository
+
+JSP ECRDetailServlet
+        |
+        +--> its own ECRRepository
+        +--> its own PartRepository
 ```
 
-and not:
+They are not connected to one shared database or singleton ECR repository.
+
+This is acceptable for the project's learning/demo architecture but should not be described as persistent shared production data.
+
+## 11. Parts integration
 
 ```text
-Real ENOVIA MQL
+POST /api/parts/sync
+        ↓
+PartSyncServlet
+        ↓
+PartSupplierClient
+        ↓
+FakeStoreAPI
+        ↓
+JSON
+        ↓
+Part objects
+        ↓
+PartRepository.saveAll()
 ```
 
----
+`PartSupplierClient` maps supplier fields to the application's `Part` model.
 
-# 16. SOAP Integration
+The supplier integration is REST, not SOAP.
 
-The project contains documentation describing how the ECR status update
-could be exposed through SOAP.
+## 12. Linked-part architecture
 
-Documentation:
+`Part.linkedEcrId` represents the association:
 
 ```text
-docs/SOAP-Integration.md
+ECR.id ←──── Part.linkedEcrId
 ```
 
-The actual application uses REST.
+The JSP detail servlet filters all parts by this relationship.
 
-SOAP is documented only as an enterprise integration concept.
+The current Vue detail view does not include linked-part rendering.
 
-A conceptual SOAP operation could be:
+## 13. CORS architecture
+
+`CorsFilter` is mapped to:
 
 ```text
-updateECRStatus
+/*
 ```
 
-which would ultimately invoke the same business validation logic.
-
----
-
-# 17. Maven
-
-Maven is used as the Java project's build system.
-
-Important commands:
+It permits the Vue development origin:
 
 ```text
-mvn clean package
-```
-
-This:
-
-* Cleans previous build output
-* Compiles Java sources
-* Runs tests if configured
-* Packages the application
-
-The final application is packaged as a WAR file for deployment to Tomcat.
-
----
-
-# 18. Apache Tomcat
-
-Apache Tomcat hosts the Java web application.
-
-Deployment flow:
-
-```text
-Java Source
-    |
-    v
-Maven
-    |
-    v
-WAR file
-    |
-    v
-Apache Tomcat
-    |
-    v
-REST API
-```
-
-The frontend runs separately through the Vue development server.
-
-Example:
-
-```text
-Vue:
 http://localhost:5173
-
-Backend:
-http://localhost:8080
 ```
 
----
-
-# 19. Git and GitHub
-
-Git is used for source control.
-
-Typical workflow:
+and supports:
 
 ```text
-git status
-
-git add .
-
-git commit -m "Description of changes"
-
-git push origin main
+GET, POST, PUT, DELETE, OPTIONS
 ```
 
-The project is maintained in GitHub so that changes can be tracked and
-the project can be shared with the team.
+The filter also handles OPTIONS preflight requests.
 
----
-
-# 20. Real vs Simulated Components
-
-| Component                       | Status          |
-| ------------------------------- | --------------- |
-| Vue.js frontend                 | Implemented     |
-| Vue Router                      | Implemented     |
-| Pinia                           | Implemented     |
-| Axios REST calls                | Implemented     |
-| Java Servlet API                | Implemented     |
-| ECRRepository                   | Implemented     |
-| ECRTriggerJPO                   | Implemented     |
-| Admin Objects configuration     | Implemented     |
-| Maven build                     | Implemented     |
-| Tomcat deployment               | Implemented     |
-| Git/GitHub                      | Implemented     |
-| TCL trigger                     | Simulated       |
-| MQL                             | Simulated       |
-| SOAP                            | Documented only |
-| Real ENOVIA/3DEXPERIENCE server | Not used        |
-
-This distinction is important when presenting the project.
-
----
-
-# 21. Design Decisions
-
-## Backend Controls Important Fields
-
-The backend generates:
+## 14. MQL simulation
 
 ```text
-ID
-Status
-Date Created
+SimulatedMQL.queryByField()
+        ↓
+Java Stream
+        ↓
+ECR field comparison
+        ↓
+List<ECR>
 ```
 
-This prevents clients from bypassing business rules.
+It demonstrates the idea of querying ECR business objects by field.
 
----
+It is not a real MQL interpreter.
 
-## Workflow Configuration
-
-Transitions are configured in:
+## 15. TCL simulation
 
 ```text
-adminObjects.xml
+ecr_trigger.tcl
+        ↓
+allowedTransitions array
+        ↓
+validateTransition procedure
+        ↓
+lsearch
+        ↓
+valid / invalid result
 ```
 
-rather than being hardcoded entirely inside the UI.
+It demonstrates trigger-style transition validation but is not deployed inside ENOVIA.
 
-The Vue application uses the same workflow concept to display only valid
-actions.
-
-The backend remains the final authority.
-
----
-
-## Pinia Instead of Passing Props
-
-Pinia is used because ECR data is shared between multiple views.
-
-Without shared state, components would need to pass data through props and
-events.
-
-Pinia provides a central store for:
+## 16. Build/deployment architecture
 
 ```text
-ECR list
-Loading state
-Error state
-Actions
-Derived state
+Java source
+   ↓
+Maven
+   ↓
+WAR
+   ↓
+Apache Tomcat 9
+   ↓
+Servlets + JSP
 ```
 
----
+The Maven project uses WAR packaging and Java source/target 11.
 
-# 22. Error Handling
-
-The application handles errors across layers.
-
-Example invalid transition:
+The Vue application runs independently during development:
 
 ```text
-Vue
- |
- v
-Axios
- |
- v
-Servlet
- |
- v
-ECRTriggerJPO
- |
- v
-InvalidStatusTransitionException
- |
- v
-HTTP 400
- |
- v
-Axios error
- |
- v
-Vue error message
-```
-
-Example:
-
-```text
-Invalid status transition: Draft -> Approved
-```
-
-The error generated by the backend is surfaced to the user interface.
-
----
-
-# 23. Future Improvements
-
-Possible production improvements include:
-
-* Database persistence
-* Authentication and authorization
-* Role-based workflow permissions
-* Real ENOVIA/3DEXPERIENCE integration
-* Real MQL execution
-* Real JPO deployment
-* Real TCL triggers
-* SOAP implementation if required by an external system
-* Automated tests
-* Docker deployment
-* CI/CD pipeline
-* Production logging
-* Audit history
-* Pagination
-* Search
-* Advanced filtering
-
----
-
-# 24. Learning Outcome
-
-This project demonstrates the complete flow from a modern frontend to
-backend business logic.
-
-The most important architecture to understand is:
-
-```text
-Vue
+Vite
+ ↓
+localhost:5173
  ↓
 Axios
  ↓
-REST Servlet
- ↓
-Repository
- ↓
-JPO-style Business Logic
- ↓
-Admin Configuration
+Tomcat backend :8080
 ```
 
-The supporting enterprise concepts are:
+## 17. Architecture boundaries
 
-```text
-TCL
-MQL
-SOAP
-ENOVIA / 3DEXPERIENCE
-```
+### Implemented
 
-The project therefore provides a practical bridge between modern
-full-stack development and enterprise PLM concepts.
+- Vue 3
+- Vue Router
+- Pinia
+- Axios
+- Java Servlets
+- REST API
+- Jackson
+- JSP
+- JSTL
+- EL
+- Servlet/MVC
+- In-memory repositories
+- XML workflow configuration
+- JPO-style trigger
+- external REST supplier client
+- linked parts in JSP detail
+- CORS filter
+- MQL simulation
+- TCL simulation
+
+### Not implemented
+
+- Real ENOVIA/3DEXPERIENCE server
+- Real JPO deployment
+- Real MQL execution
+- Real ENOVIA TCL trigger execution
+- SOAP endpoint
+- Database persistence
+- Authentication/authorization
+- Vue Parts page
+- Vue Suppliers page

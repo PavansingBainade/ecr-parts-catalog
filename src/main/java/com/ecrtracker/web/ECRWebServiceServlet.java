@@ -23,8 +23,7 @@ public class ECRWebServiceServlet extends HttpServlet {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     private final ECRRepository repository =
-            new ECRRepository();
-
+        ECRRepository.getInstance();
     private final ECRTriggerJPO trigger =
             new ECRTriggerJPO();
 

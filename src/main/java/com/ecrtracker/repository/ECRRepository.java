@@ -9,8 +9,14 @@ import java.util.stream.Collectors;
 
 public class ECRRepository {
 
-    private final List<ECR> ecrList = new ArrayList<>();
+private final List<ECR> ecrList = new ArrayList<>();
 
+private static final ECRRepository INSTANCE =
+        new ECRRepository();
+
+public static ECRRepository getInstance() {
+    return INSTANCE;
+}
     public List<ECR> getAll() {
         return new ArrayList<>(ecrList);
     }

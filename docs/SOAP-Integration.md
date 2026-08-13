@@ -1,186 +1,66 @@
-# SOAP Integration Documentation
+# SOAP Integration
 
-## Purpose
+## Status
 
-The ECR Parts Catalog application currently exposes its backend functionality
-through REST APIs.
+SOAP is **not implemented as a running endpoint** in the current project.
 
-This document describes how the ECR status update operation could be exposed
-through SOAP for integration with a legacy enterprise system.
+The implemented external integration is REST-based.
 
-No SOAP service is implemented in this project.
+## Current external integration
 
----
-
-## Existing REST Operation
-
-The application currently uses:
-
-    PUT /api/ecrs/{id}/status
-
-Example request:
-
-```json
-{
-  "status": "Approved"
-}
-````
-
-Example response:
-
-```json
-{
-  "id": 101,
-  "title": "Wheel Design Change",
-  "description": "Update wheel assembly",
-  "status": "Approved",
-  "priority": "HIGH",
-  "requestedBy": "Pavan",
-  "dateCreated": "2026-08-13"
-}
+```text
+PartSyncServlet
+      ↓
+PartSupplierClient
+      ↓
+FakeStoreAPI
+      ↓
+JSON response
+      ↓
+Part objects
+      ↓
+PartRepository
 ```
 
----
+The supplier client uses Java `HttpClient` and Jackson.
 
-## SOAP Equivalent
+## Why SOAP is documented
 
-A SOAP service could expose an operation such as:
+SOAP is included as an enterprise integration concept because the project is intended to demonstrate PLM/enterprise integration patterns.
 
-```
-updateECRStatus
-```
+A future SOAP design could expose an operation such as:
 
-Example conceptual request:
-
-```xml
-<soap:Envelope
-    xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
-    xmlns:ecr="http://ecrtracker.com/ecr">
-
-    <soap:Header/>
-
-    <soap:Body>
-
-        <ecr:updateECRStatus>
-
-            <ecr:ecrId>101</ecr:ecrId>
-
-            <ecr:newStatus>Approved</ecr:newStatus>
-
-        </ecr:updateECRStatus>
-
-    </soap:Body>
-
-</soap:Envelope>
+```text
+getParts()
 ```
 
----
+and return a SOAP XML response.
 
-## Conceptual SOAP Response
+However, the current repository does not contain:
 
-A successful response could contain:
+- a SOAP servlet
+- WSDL
+- JAX-WS service
+- SOAP client
+- SOAP endpoint configuration
 
-```xml
-<soap:Envelope
-    xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
-    xmlns:ecr="http://ecrtracker.com/ecr">
+Therefore SOAP must be described as **conceptual/documentation only**.
 
-    <soap:Body>
+## REST vs SOAP in this project
 
-        <ecr:updateECRStatusResponse>
+| Area | Current project |
+|---|---|
+| ECR API | REST |
+| Part API | REST |
+| Supplier integration | REST |
+| SOAP endpoint | Not implemented |
+| SOAP WSDL | Not implemented |
+| SOAP client | Not implemented |
 
-            <ecr:ecrId>101</ecr:ecrId>
+## Presentation answer
 
-            <ecr:status>Approved</ecr:status>
+If asked "Did you implement SOAP?":
 
-            <ecr:message>Status updated successfully</ecr:message>
+> "No. SOAP is documented as a possible enterprise integration approach, but the actual external integration in my implementation uses REST through Java HttpClient and FakeStoreAPI."
 
-        </ecr:updateECRStatusResponse>
-
-    </soap:Body>
-
-</soap:Envelope>
-```
-
----
-
-## Error Handling
-
-If the requested transition violates the configured workflow rules,
-the SOAP service could return a SOAP Fault.
-
-Example:
-
-```xml
-<soap:Fault>
-
-    <faultcode>soap:Client</faultcode>
-
-    <faultstring>
-        Invalid status transition: Draft -> Approved
-    </faultstring>
-
-</soap:Fault>
-```
-
-This corresponds to the validation already implemented by the Java
-`ECRTriggerJPO`.
-
----
-
-## Request Flow
-
-The conceptual integration flow would be:
-
-```
-Legacy Enterprise System
-         |
-         | SOAP Request
-         v
-    SOAP Endpoint
-         |
-         v
-   ECR Service Layer
-         |
-         v
-   ECRRepository
-         |
-         v
-   ECRTriggerJPO
-         |
-         v
- Validate Transition
-         |
-         v
-   Update ECR Status
-         |
-         v
-    SOAP Response
-```
-
----
-
-## REST vs SOAP
-
-| Feature        | Current Application       | SOAP Integration          |
-| -------------- | ------------------------- | ------------------------- |
-| Protocol       | HTTP REST                 | SOAP over HTTP            |
-| Request format | JSON                      | XML                       |
-| Status update  | PUT /api/ecrs/{id}/status | updateECRStatus operation |
-| Validation     | ECRTriggerJPO             | Same backend validation   |
-| Response       | JSON                      | XML                       |
-| Implementation | Implemented               | Documentation only        |
-
----
-
-## Important Note
-
-This project does not implement a SOAP endpoint.
-
-The SOAP examples above document a possible enterprise integration approach
-while the actual application continues to use REST APIs.
-
-The purpose is to demonstrate understanding of SOAP concepts and how the
-existing ECR functionality could participate in a legacy enterprise
-integration.
-
+That is the accurate description of the current repository.
