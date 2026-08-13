@@ -4,7 +4,7 @@
 
 > "I developed an ECR Parts Catalog application using Vue 3 on the frontend and Java Servlets deployed on Apache Tomcat on the backend. The Vue application uses Pinia for state management and Axios for REST communication. ECR creation, retrieval, and status changes are handled through REST APIs. The backend generates the ECR ID, creation date, and initial Draft status and validates workflow transitions using an XML-based Admin Object configuration and a JPO-style Java trigger.
 >
-> In addition to the Vue dashboard, the project contains JSP administrative screens using Servlet MVC, JSTL, and Expression Language. The JSP detail screen also demonstrates linked ECR parts. The project includes an external REST supplier integration using FakeStoreAPI, plus simulations of MQL and TCL concepts. Real ENOVIA/3DEXPERIENCE and SOAP are not connected."
+> The project also contains a second, JSP-based admin path using Servlet MVC, JSTL, and Expression Language. One of its two routes — the single-ECR detail view — works, but runs against its own isolated seed data rather than the same repository the REST API uses. The other — the admin ECR list — currently has a dispatcher and attribute-naming bug I found while auditing the code, so it doesn't render. I've documented both honestly rather than claiming the JSP module fully works. The project also includes an external REST supplier integration using FakeStoreAPI, plus simulations of MQL and TCL concepts. Real ENOVIA/3DEXPERIENCE and SOAP are not connected."
 
 ## 2. Why Vue?
 
@@ -17,8 +17,6 @@
 ## 3. Why Pinia?
 
 Pinia provides centralized client-side state for ECR data and loading/error state.
-
-The ECR store exposes:
 
 ```text
 ecrs
@@ -33,34 +31,28 @@ updateStatus()
 
 REST keeps the Vue frontend independent from the Java backend implementation.
 
-Example:
-
 ```text
 Vue → Axios → REST → Servlet → Repository
 ```
 
 ## 5. Why JSP if Vue is already used?
 
-A strong answer:
-
-> "The project demonstrates both modern and traditional Java web UI approaches. Vue is used for the main dashboard and user-facing ECR workflow, while JSP is used for server-rendered administrative screens. The JSP screens demonstrate Servlet MVC, JSTL, Expression Language, and JavaBean-based view rendering."
+> "The project demonstrates both modern and traditional Java web UI approaches. Vue is used for the main dashboard and user-facing ECR workflow, while JSP is used for server-rendered administrative screens. In its current state, the detail screen works but the list screen doesn't — I can walk through exactly why if you'd like."
 
 ## 6. Explain JSP/JSTL/EL
 
 ### JSP
 
-JSP is the server-side view technology.
-
 Files:
 
 ```text
-ecrList.jsp
-ecrDetail.jsp
+src/main/webapp/ecrList.jsp
+src/main/webapp/ecrDetail.jsp
 ```
 
-### JSTL
+Both live at the webapp root, not under `WEB-INF/`.
 
-Used for view-side control logic:
+### JSTL
 
 ```jsp
 <c:forEach>
@@ -70,8 +62,6 @@ Used for view-side control logic:
 ```
 
 ### EL
-
-Used to access model properties:
 
 ```jsp
 ${ecr.title}
@@ -88,13 +78,7 @@ Data       → Repository
 View       → JSP
 ```
 
-The servlet prepares data with:
-
-```java
-request.setAttribute(...)
-```
-
-and forwards the request to the JSP.
+The servlet prepares data with `request.setAttribute(...)` and forwards the request to the JSP — when the attribute name and dispatch path actually match what the JSP expects. (They do for `ECRDetailServlet`; they don't for `ECRAdminServlet` — see Q19 below.)
 
 ## 8. Explain workflow
 
@@ -105,132 +89,89 @@ InReview → Rejected
 Rejected → Draft
 ```
 
-Approved has no configured outgoing transition.
+`Approved` has no configured outgoing transition.
 
 ## 9. How is workflow protected?
 
 The frontend only displays valid buttons, but it is not trusted.
 
-The backend:
-
 ```text
-request
- ↓
-ECRRepository.updateStatus()
- ↓
-ECRTriggerJPO.validateTransition()
- ↓
-allowedTransitions
- ↓
-accept/reject
+request → ECRRepository.updateStatus() → ECRTriggerJPO.validateTransition()
+        → allowedTransitions → accept/reject
 ```
 
-So a user cannot bypass the workflow simply by sending a direct HTTP request.
+A user cannot bypass the workflow simply by sending a direct HTTP request to `/api/ecrs/{id}/status`.
 
 ## 10. What is Admin Object?
 
-In this project, `adminObjects.xml` represents the configuration of allowed ECR workflow transitions.
-
-It is parsed at runtime by `AdminObjectConfigReader`.
+`adminObjects.xml` represents the configuration of allowed ECR workflow transitions, parsed at runtime by `AdminObjectConfigReader`.
 
 ## 11. What is JPO?
 
-The actual project does not deploy an ENOVIA JPO.
-
-`ECRTriggerJPO` is a Java class that demonstrates the JPO-style business-rule concept.
+The project does not deploy an ENOVIA JPO. `ECRTriggerJPO` is a Java class that demonstrates the JPO-style business-rule concept.
 
 ## 12. What is MQL?
 
-The project contains `SimulatedMQL.java`.
-
-It demonstrates a conceptual query such as:
-
-```text
-status == Draft
-```
-
-using Java Streams.
-
-It is not a real MQL engine.
+`SimulatedMQL.java` demonstrates a conceptual query such as `status == Draft` using Java Streams. Not a real MQL engine.
 
 ## 13. What is TCL?
 
-`tcl/ecr_trigger.tcl` demonstrates transition validation using TCL procedures and arrays.
-
-It is a simulation, not a deployed ENOVIA trigger.
+`tcl/ecr_trigger.tcl` demonstrates transition validation using TCL procedures and arrays. It's a standalone script, run independently — not called from the Java backend and not deployed to ENOVIA.
 
 ## 14. Explain supplier integration
 
 ```text
-POST /api/parts/sync
- ↓
-PartSyncServlet
- ↓
-PartSupplierClient
- ↓
-FakeStoreAPI
- ↓
-JSON
- ↓
-Part objects
- ↓
-PartRepository
+POST /api/parts/sync → PartSyncServlet → PartSupplierClient
+    → https://fakestoreapi.com/products → JSON → Part objects → PartRepository.saveAll()
 ```
-
-The UI/backend is separated from the external API through a dedicated client class.
 
 ## 15. Why FakeStoreAPI?
 
-> "It is used as an accessible external REST API to demonstrate supplier/part integration without depending on a real company supplier system."
+> "It's an accessible external REST API to demonstrate supplier/part integration without depending on a real company supplier system."
 
 ## 16. Is SOAP implemented?
 
 No.
 
-Correct answer:
-
-> "SOAP is documented as an enterprise integration concept, but the implemented external integration in this project is REST-based."
+> "SOAP is documented as a possible enterprise integration approach, but the actual external integration in my implementation uses REST through Java HttpClient and FakeStoreAPI."
 
 ## 17. Is ENOVIA implemented?
 
 No.
 
-Correct answer:
-
-> "The project demonstrates ENOVIA/3DEXPERIENCE concepts such as Admin Objects, JPO-style triggers, MQL and TCL, but it does not connect to a real ENOVIA/3DEXPERIENCE server."
+> "The project demonstrates ENOVIA/3DEXPERIENCE concepts — Admin Objects, JPO-style triggers, MQL, TCL — but doesn't connect to a real ENOVIA/3DEXPERIENCE server."
 
 ## 18. Does the project use a database?
 
-No.
+No — `ArrayList`-backed repositories.
 
-The current repositories use Java `ArrayList` collections.
+## 19. Are there any known bugs? (be ready for this)
 
-## 19. What happens when the server restarts?
+Yes, and it's better to volunteer this than have it found live:
+
+- `ECRAdminServlet` (`/admin/ecrs`) forwards to `/WEB-INF/jsp/ecrList.jsp`, a path that doesn't exist in the project — the JSP actually lives at the webapp root. It also sets the request attribute as `"ecrs"` while the JSP reads `${ecrList}`. Both need fixing for that route to render.
+- `ECRDetailServlet` (`/admin/ecr?id=`) works, but uses its own repository instances seeded with two hardcoded ECRs — it's not connected to the same data as the REST API or Vue app.
+- `GET /api/parts` returns a 500 if called before `/api/parts/sync` has run once, because the shared `PartRepository` is only created inside the sync servlet's `init()`.
+
+> "I found these while doing a full audit of my own code against my documentation — the REST/Vue path is solid, and I know exactly what's wrong with the JSP list route and could fix it in a few minutes if asked."
+
+## 20. What happens when the server restarts?
 
 In-memory repository data is lost.
 
-This is a known limitation of the demonstration implementation.
+## 21. What is the role of Tomcat?
 
-## 20. What is the role of Tomcat?
+Runs the Java Servlet/JSP web application from the generated WAR.
 
-Tomcat runs the Java Servlet/JSP web application and serves the generated WAR.
+## 22. Why Maven?
 
-## 21. Why Maven?
+Manages the Java build, dependencies, compilation, and WAR packaging.
 
-Maven manages:
+## 23. Strong architecture answer
 
-- Java build
-- dependencies
-- compilation
-- WAR packaging
+> "The application follows a layered architecture. The Vue frontend communicates through Axios with Java Servlet REST endpoints. The servlet layer delegates ECR operations to a shared repository singleton and uses a configuration-driven trigger for workflow validation, loaded from an Admin Object XML file. Separately, JSP administrative screens use Servlet MVC — one route works against isolated seed data, one route has a wiring bug I've documented. Parts are stored separately and can be synchronized from an external REST supplier service. MQL and TCL are included as learning simulations; SOAP and real ENOVIA integration are not implemented."
 
-## 22. Strong architecture answer
-
-> "The application follows a layered architecture. The Vue frontend communicates through Axios with Java Servlet REST endpoints. The servlet layer delegates ECR operations to repositories and uses a configuration-driven trigger for workflow validation. Workflow transitions are loaded from an Admin Object XML file. Separately, JSP administrative screens use Servlet MVC, with servlets acting as controllers, JavaBeans/repositories as the model/data layer, and JSP with JSTL and EL as the view. Parts are stored separately and can be synchronized from an external REST supplier service. MQL and TCL are included as learning simulations, while SOAP and real ENOVIA integration are not implemented."
-
-## 23. Avoid saying
-
-Do not say:
+## 24. Avoid saying
 
 - "We connected to ENOVIA."
 - "We implemented real MQL."
@@ -238,6 +179,7 @@ Do not say:
 - "We implemented a SOAP service."
 - "We have a production database."
 - "Vue displays linked parts."
-- "JSP and Vue share one persistent repository."
+- "The JSP admin list screen works." (it currently doesn't — see Q19)
+- "All three ECR servlets share one repository." (only two of the three do)
 
 Those statements are not supported by the current code.

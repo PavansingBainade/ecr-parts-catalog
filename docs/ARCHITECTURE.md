@@ -2,14 +2,14 @@
 
 ## 1. Purpose
 
-This document describes the architecture that is actually implemented in the repository.
+This document describes the architecture as implemented, verified line-by-line against the source in this repository. Where the implementation is broken or inconsistent with its own intent, that is called out explicitly rather than smoothed over — see §10.
 
-The application has **two UI paths**:
+The application has two UI paths on one WAR:
 
-1. A Vue 3 single-page application that consumes REST APIs.
-2. JSP administrative screens that use Servlet/MVC, JSTL, and Expression Language.
+1. A Vue 3 SPA that consumes a REST API.
+2. JSP administrative screens using Servlet/MVC, JSTL, and EL.
 
-The backend is a Java Servlet WAR deployed to Apache Tomcat. Data is stored in memory.
+Data is in-memory (`ArrayList`-backed repositories); no database.
 
 ## 2. System context
 
@@ -25,11 +25,12 @@ The backend is a Java Servlet WAR deployed to Apache Tomcat. Data is stored in m
                 Axios                    /       \
                   |                     v         v
                   |              ECR Repository  Part Repository
-                  |                     |
-                  +-----------> REST    |
-                               API      |
-                                  \     |
-                                   v    v
+                  |              (see §10 — not      |
+                  |               uniformly shared)   |
+                  +-----------> REST                  |
+                               API                     |
+                                  \                    |
+                                   v                    v
                                 Java Backend
 ```
 
@@ -37,38 +38,27 @@ The backend is a Java Servlet WAR deployed to Apache Tomcat. Data is stored in m
 
 ```text
 main.js
-  |
-  +--> createApp(App)
-  |
-  +--> Pinia
-  |
-  +--> Vue Router
-             |
-             +--> /
-             |     ECRListView.vue
-             |
-             +--> /ecrs/new
-             |     ECRForm.vue
-             |
-             +--> /ecrs/:id
-                   ECRDetailView.vue
+  └─ createApp(App)
+       ├─ Pinia
+       └─ Vue Router
+            ├─ /            ECRListView.vue
+            ├─ /ecrs/new    ECRForm.vue
+            └─ /ecrs/:id    ECRDetailView.vue
 ```
 
 ### State/data flow
 
 ```text
 ECRListView / ECRDetailView
-            ↓
-        ecrStore.js
-            ↓
-        services/api.js
-            ↓
-          Axios
-            ↓
-http://localhost:8080/ecr-tracker/api
+        ↓
+    ecrStore.js (Pinia)
+        ↓
+    services/api.js (Axios, baseURL http://localhost:8080/ecr-tracker/api)
+        ↓
+    ECRWebServiceServlet
 ```
 
-Pinia stores ECRs in memory on the client and refreshes them through `GET /api/ecrs`.
+`ECRDetailView.vue` has no dedicated GET-by-id call — it reads the ECR out of the Pinia-held list by `Number(id)`, fetching the list first if it's empty. Its "which buttons to show" logic uses a transition map **hardcoded in the component**, separate from (though currently matching) `adminObjects.xml`.
 
 ## 4. Backend architecture
 
@@ -76,15 +66,15 @@ Pinia stores ECRs in memory on the client and refreshes them through `GET /api/e
 HTTP
  ↓
 Servlet Layer
- ├── ECRWebServiceServlet
- ├── PartServlet
- ├── PartSyncServlet
- ├── ECRAdminServlet
- └── ECRDetailServlet
+ ├── ECRWebServiceServlet   /api/ecrs/*
+ ├── PartServlet            /api/parts
+ ├── PartSyncServlet        /api/parts/sync
+ ├── ECRAdminServlet        /admin/ecrs/*
+ └── ECRDetailServlet       /admin/ecr
  ↓
 Repository / Client Layer
- ├── ECRRepository
- ├── PartRepository
+ ├── ECRRepository   (singleton via getInstance())
+ ├── PartRepository  (NOT a singleton — see §10)
  └── PartSupplierClient
  ↓
 Model
@@ -92,24 +82,12 @@ Model
  └── Part
 ```
 
-Cross-cutting:
+Cross-cutting: `CorsFilter` (`@WebFilter("/*")`).
+
+Workflow/configuration path:
 
 ```text
-CorsFilter
-```
-
-Workflow/configuration:
-
-```text
-ECRWebServiceServlet
-        ↓
-AdminObjectConfigReader
-        ↓
-adminObjects.xml
-        ↓
-ECRTriggerJPO
-        ↓
-ECRRepository.updateStatus()
+ECRWebServiceServlet → AdminObjectConfigReader → adminObjects.xml → ECRTriggerJPO → ECRRepository.updateStatus()
 ```
 
 ## 5. REST ECR flow
@@ -117,248 +95,123 @@ ECRRepository.updateStatus()
 ### Read
 
 ```text
-Vue
- ↓
-Pinia
- ↓
-Axios GET /api/ecrs
- ↓
-ECRWebServiceServlet.doGet()
- ↓
-ECRRepository.getAll()
- ↓
-Jackson JSON
- ↓
-Vue
+Vue → Pinia → Axios GET /api/ecrs → ECRWebServiceServlet.doGet()
+    → ECRRepository.getInstance().getAll() → Jackson JSON → Vue
 ```
 
 ### Create
 
 ```text
-ECRForm.vue
- ↓
-Axios POST /api/ecrs
- ↓
-ECRWebServiceServlet.doPost()
- ↓
-Validate title/requester/priority
- ↓
-Clear client ID/status/date
- ↓
-ECRRepository.save()
- ↓
-Generate ID
- ↓
-Set Draft
- ↓
-Generate date
- ↓
-Return HTTP 201 JSON
+ECRForm.vue → Axios POST /api/ecrs → ECRWebServiceServlet.doPost()
+    → validate title/requestedBy/priority
+    → clear client id/status/dateCreated
+    → ECRRepository.save() → generate ID, force Draft, generate date
+    → HTTP 201 + JSON
 ```
 
 ### Status update
 
 ```text
-ECRDetailView.vue
- ↓
-Pinia updateStatus()
- ↓
-Axios PUT /api/ecrs/{id}/status
- ↓
-ECRWebServiceServlet.doPut()
- ↓
-ECRRepository.updateStatus()
- ↓
-ECRTriggerJPO.validateTransition()
- ↓
-allowedTransitions loaded from adminObjects.xml
- ↓
-Valid? ── No → HTTP 400
-   |
-  Yes
-   ↓
-Set new status
-   ↓
-Return updated ECR
+ECRDetailView.vue → Pinia updateStatus() → Axios PUT /api/ecrs/{id}/status
+    → ECRWebServiceServlet.doPut()
+    → validate path (/\d+/status) and body (status non-blank)
+    → 404 if ECR missing
+    → ECRRepository.updateStatus() → ECRTriggerJPO.validateTransition()
+    → invalid → 400 {"error": "..."}
+    → valid → set status → 200 + updated ECR JSON
 ```
 
 ## 6. Workflow architecture
 
-The workflow source of truth is:
+Source of truth: `src/main/resources/adminObjects.xml`.
 
 ```text
-src/main/resources/adminObjects.xml
+Draft → InReview
+InReview → Approved
+InReview → Rejected
+Rejected → Draft
 ```
 
-It contains:
-
-```text
-Draft      → InReview
-InReview   → Approved
-InReview   → Rejected
-Rejected   → Draft
-```
-
-`AdminObjectConfigReader` parses the XML using DOM APIs and creates:
-
-```java
-Map<String, List<String>>
-```
-
-The trigger does not hard-code the XML itself. It receives the parsed transition map.
-
-This gives the application a configuration-driven workflow.
+`AdminObjectConfigReader` parses the XML with `javax.xml.parsers.DocumentBuilder` (DOM), reads every `<transition from="" to=""/>` element, and builds `Map<String, List<String>>`. `ECRTriggerJPO` receives this map as a parameter — it does not read the XML itself, and does not cache/reload it (each servlet instance loads it once, in its constructor).
 
 ## 7. JPO-style trigger
 
-`ECRTriggerJPO` is intentionally named to represent the ENOVIA JPO concept.
-
-Actual implementation:
-
-```java
-validateTransition(currentStatus, newStatus, allowedTransitions)
-```
-
-It checks whether the new state is contained in the configured list.
-
-Important distinction:
+`ECRTriggerJPO.validateTransition(currentStatus, newStatus, allowedTransitions)` looks up `allowedTransitions.get(currentStatus)` and checks whether `newStatus` is in that list; if not, throws `InvalidStatusTransitionException`.
 
 ```text
 Real ENOVIA JPO      → Not used
-Java JPO-style class → Implemented
+Java JPO-style class → Implemented (ECRTriggerJPO)
 ```
 
-## 8. JSP / Servlet MVC architecture
+## 8. JSP / Servlet-MVC architecture
 
-The project also contains a traditional Java web MVC path.
-
-### List screen
+### List screen — `/admin/ecrs` (broken as written)
 
 ```text
 GET /admin/ecrs
       ↓
-ECRAdminServlet
+ECRAdminServlet   (uses ECRRepository.getInstance() — same singleton as REST)
       ↓
-ECRRepository
+request.setAttribute("ecrs", ecrs)
       ↓
-request.setAttribute("ecrList", ...)
-      ↓
-ecrList.jsp
+getRequestDispatcher("/WEB-INF/jsp/ecrList.jsp")   ← path does not exist in the WAR
 ```
 
-`ecrList.jsp` renders the list using JSTL and EL.
+There is no `WEB-INF/jsp/` directory in the project; the actual file is `src/main/webapp/ecrList.jsp`. Separately, that JSP's `<c:forEach var="ecr" items="${ecrList}">` reads an attribute named `ecrList`, but the servlet sets `"ecrs"`. Both defects are independent and both must be fixed for this route to work: correct the dispatcher path to `/ecrList.jsp`, and rename either the servlet attribute or the JSP's EL reference so they match.
 
-### Detail screen
+The detail branch of the same servlet (`GET /admin/ecrs/{id}`) has the analogous dispatcher-path bug against `/WEB-INF/jsp/ecrDetail.jsp`, and additionally never sets a `linkedParts` attribute, so even once reachable it can only ever show "No parts are linked to this ECR."
+
+### Detail screen — `/admin/ecr?id=` (works)
 
 ```text
 GET /admin/ecr?id=101
       ↓
-ECRDetailServlet
+ECRDetailServlet.init()
+      → own ECRRepository (new, not the singleton)
+      → own PartRepository (new)
+      → seeds ECR 101, 102 and three Parts, hardcoded
       ↓
-ECRRepository.getById()
+doGet(): ecrRepository.getById(id) → filter parts by linkedEcrId == id
       ↓
-PartRepository.getAll()
+request.setAttribute("ecr", ecr)
+request.setAttribute("linkedParts", linkedParts)
       ↓
-filter linkedEcrId == ecr.id
-      ↓
-request.setAttribute("ecr", ...)
-request.setAttribute("linkedParts", ...)
-      ↓
-ecrDetail.jsp
+getRequestDispatcher("/ecrDetail.jsp")   ← correct, root-relative
 ```
 
-## 9. JSP technology details
+This route works, but only for the two hardcoded ECRs — it is not connected to the singleton `ECRRepository`, so ECRs created via the REST API or Vue are never visible here.
 
-### JSP
-
-The actual views are:
+## 9. Repository sharing — the actual picture
 
 ```text
-src/main/webapp/ecrList.jsp
-src/main/webapp/ecrDetail.jsp
+ECRWebServiceServlet  ──┐
+                         ├──> ECRRepository.getInstance()   (SAME instance)
+ECRAdminServlet        ──┘
+
+ECRDetailServlet       ──> new ECRRepository()  +  new PartRepository()   (SEPARATE, seeded)
+
+PartServlet            ──> reads PartRepository from ServletContext
+PartSyncServlet.init() ──> creates that PartRepository and stores it in ServletContext
+                            (only place it's ever created — see §10 #5)
 ```
 
-### JSTL
+`ECRRepository` implements the singleton pattern (`private static final ECRRepository INSTANCE`, `getInstance()`), and it is genuinely used as a singleton by two of the three servlets that touch ECR data. `ECRDetailServlet` is the outlier.
 
-The JSPs use the JSTL core tag library:
+`PartRepository` has no singleton pattern at all — its one shared instance exists only because `PartSyncServlet.init()` happens to store it in the `ServletContext`, and `ECRDetailServlet` separately creates a third, unrelated `PartRepository` for its own seeded parts.
 
-```jsp
-<%@ taglib prefix="c" uri="http://java.sun.com/jsp/jstl/core" %>
-```
+## 10. Known defects (verified against source, not inferred)
 
-Examples actually used:
+| # | Defect | Location | Consequence |
+|---|---|---|---|
+| 1 | `ECRAdminServlet` forwards to `/WEB-INF/jsp/ecrList.jsp` / `/WEB-INF/jsp/ecrDetail.jsp`; no `WEB-INF/jsp/` exists | `ECRAdminServlet.java` | `/admin/ecrs*` cannot resolve the forward target |
+| 2 | Attribute name mismatch: servlet sets `"ecrs"`, JSP reads `${ecrList}` | `ECRAdminServlet.java` / `ecrList.jsp` | Table renders empty even if #1 is fixed |
+| 3 | `linkedParts` never set by `ECRAdminServlet`'s detail branch | `ECRAdminServlet.java` | Linked-parts section always empty via that route |
+| 4 | `ECRDetailServlet` uses `new ECRRepository()`/`new PartRepository()`, not the singleton | `ECRDetailServlet.java` | `/admin/ecr?id=` only shows hardcoded demo ECRs 101/102 |
+| 5 | `PartRepository` in `ServletContext` is only created inside `PartSyncServlet.init()`; no `web.xml`/`load-on-startup` | `PartServlet.java` / `PartSyncServlet.java` | `GET /api/parts` before any sync → HTTP 500 |
+| 6 | `js/admin.js` duplicates `js/ecr-filter.js`, unreferenced by any JSP | `webapp/js/admin.js` | Dead code |
+| 7 | `Main.java` uses `new ECRRepository()` instead of `getInstance()` | `Main.java` | Cosmetic inconsistency only (standalone demo, not servlet-container code) |
 
-```jsp
-<c:forEach>
-<c:choose>
-<c:when>
-<c:otherwise>
-```
-
-### Expression Language
-
-The views access JavaBean properties using EL:
-
-```jsp
-${ecr.id}
-${ecr.title}
-${ecr.description}
-${ecr.status}
-${ecr.priority}
-${ecr.requestedBy}
-${ecr.dateCreated}
-
-${part.id}
-${part.partNumber}
-${part.name}
-${part.category}
-${part.price}
-```
-
-They also use:
-
-```jsp
-${empty linkedParts}
-${pageContext.request.contextPath}
-```
-
-### MVC responsibilities
-
-| Layer | Responsibility |
-|---|---|
-| Servlet | Controller |
-| Repository | Data access abstraction |
-| ECR / Part | Model / JavaBeans |
-| JSP | View |
-| JSTL | View-side control structures |
-| EL | View-side property access |
-
-This is a real implemented Servlet/MVC flow.
-
-## 10. JSP data isolation
-
-A significant architectural detail is that the JSP servlets instantiate their own repositories and seed sample data.
-
-Therefore:
-
-```text
-REST ECRWebServiceServlet
-        |
-        +--> its own ECRRepository
-
-JSP ECRAdminServlet
-        |
-        +--> its own ECRRepository
-
-JSP ECRDetailServlet
-        |
-        +--> its own ECRRepository
-        +--> its own PartRepository
-```
-
-They are not connected to one shared database or singleton ECR repository.
-
-This is acceptable for the project's learning/demo architecture but should not be described as persistent shared production data.
+None of these affect the REST/Vue path (§5), which is internally consistent and functional.
 
 ## 11. Parts integration
 
@@ -367,147 +220,80 @@ POST /api/parts/sync
         ↓
 PartSyncServlet
         ↓
-PartSupplierClient
+PartSupplierClient  → GET https://fakestoreapi.com/products (Java HttpClient)
         ↓
-FakeStoreAPI
+Jackson JSON parse
         ↓
-JSON
+map to Part { partNumber="PART-"+id, name=title, category, price, linkedEcrId=null }
         ↓
-Part objects
-        ↓
-PartRepository.saveAll()
+PartRepository.saveAll()  (replaces existing contents)
 ```
 
-`PartSupplierClient` maps supplier fields to the application's `Part` model.
-
-The supplier integration is REST, not SOAP.
+`GET /api/parts` (`PartServlet`) reads that same `PartRepository` from the `ServletContext` — see defect #5 for the ordering hazard.
 
 ## 12. Linked-part architecture
 
-`Part.linkedEcrId` represents the association:
-
-```text
-ECR.id ←──── Part.linkedEcrId
-```
-
-The JSP detail servlet filters all parts by this relationship.
-
-The current Vue detail view does not include linked-part rendering.
+`Part.linkedEcrId` associates a part with an ECR. Only `ECRDetailServlet` (`/admin/ecr?id=`) computes and renders this association, against its own isolated seeded data (defect #4). The REST-synced parts from FakeStoreAPI always have `linkedEcrId = null`. The Vue detail view does not render linked parts at all.
 
 ## 13. CORS architecture
 
-`CorsFilter` is mapped to:
+`CorsFilter`, mapped `/*`: sets `Access-Control-Allow-Origin: http://localhost:5173`, allows `GET, POST, PUT, DELETE, OPTIONS`, allows `Content-Type, Authorization` headers, and returns `200` immediately for `OPTIONS` preflight without invoking the rest of the chain.
+
+## 14. MQL and TCL simulations
 
 ```text
-/*
-```
-
-It permits the Vue development origin:
-
-```text
-http://localhost:5173
-```
-
-and supports:
-
-```text
-GET, POST, PUT, DELETE, OPTIONS
-```
-
-The filter also handles OPTIONS preflight requests.
-
-## 14. MQL simulation
-
-```text
-SimulatedMQL.queryByField()
+SimulatedMQL.queryByField(ecrs, field, value)
         ↓
-Java Stream
-        ↓
-ECR field comparison
+Java Stream .filter() over a switch on field name
         ↓
 List<ECR>
 ```
 
-It demonstrates the idea of querying ECR business objects by field.
-
-It is not a real MQL interpreter.
-
-## 15. TCL simulation
-
 ```text
-ecr_trigger.tcl
+tcl/ecr_trigger.tcl
         ↓
-allowedTransitions array
+allowedTransitions (TCL associative array)
         ↓
-validateTransition procedure
+validateTransition proc → lsearch
         ↓
-lsearch
-        ↓
-valid / invalid result
+valid / invalid, printed to stdout for 6 hardcoded test cases
 ```
 
-It demonstrates trigger-style transition validation but is not deployed inside ENOVIA.
+Neither is invoked by the Java backend; the TCL script is a standalone file run independently, not a deployed ENOVIA trigger.
 
-## 16. Build/deployment architecture
-
-```text
-Java source
-   ↓
-Maven
-   ↓
-WAR
-   ↓
-Apache Tomcat 9
-   ↓
-Servlets + JSP
-```
-
-The Maven project uses WAR packaging and Java source/target 11.
-
-The Vue application runs independently during development:
+## 15. Build/deployment architecture
 
 ```text
-Vite
- ↓
-localhost:5173
- ↓
-Axios
- ↓
-Tomcat backend :8080
+Java source → Maven (WAR, Java 11) → ecr-tracker.war → Apache Tomcat → Servlets + JSP
 ```
 
-## 17. Architecture boundaries
+```text
+Vite dev server (localhost:5173) → Axios → Tomcat (localhost:8080/ecr-tracker)
+```
 
-### Implemented
+## 16. Architecture boundaries
 
-- Vue 3
-- Vue Router
-- Pinia
-- Axios
-- Java Servlets
-- REST API
-- Jackson
-- JSP
-- JSTL
-- EL
-- Servlet/MVC
-- In-memory repositories
-- XML workflow configuration
-- JPO-style trigger
-- external REST supplier client
-- linked parts in JSP detail
-- CORS filter
-- MQL simulation
-- TCL simulation
+### Implemented (and working)
+
+- Vue 3, Vue Router, Pinia, Axios
+- REST ECR API with server-side ID/status/date control and workflow validation
+- Jackson JSON (de)serialization
+- `AdminObjectConfigReader` + XML-driven workflow
+- `ECRTriggerJPO`-style validation
+- `PartSupplierClient` external REST integration + `/api/parts/sync`
+- `CorsFilter`
+- MQL simulation (`SimulatedMQL`), TCL simulation (standalone script)
+- `/admin/ecr?id=` JSP detail screen (against isolated demo data)
+
+### Implemented but broken
+
+- `/admin/ecrs` and `/admin/ecrs/{id}` (JSP list/detail via `ECRAdminServlet`) — see §10 #1–3
+- `GET /api/parts` before first sync — see §10 #5
 
 ### Not implemented
 
-- Real ENOVIA/3DEXPERIENCE server
-- Real JPO deployment
-- Real MQL execution
-- Real ENOVIA TCL trigger execution
+- Real ENOVIA/3DEXPERIENCE server, real JPO deployment, real MQL execution, real ENOVIA TCL trigger execution
 - SOAP endpoint
 - Database persistence
 - Authentication/authorization
-- Vue Parts page
-- Vue Suppliers page
+- Vue Parts page, Vue Suppliers page
