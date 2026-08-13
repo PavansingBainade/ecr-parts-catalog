@@ -29,31 +29,30 @@ public class ECRRepository {
 
     public void save(ECR ecr) {
 
-        // Generate ID if not provided
-        if (ecr.getId() == null) {
+    // Always generate ID on the server
+    long nextId = ecrList.stream()
+            .map(ECR::getId)
+            .filter(id -> id != null)
+            .mapToLong(Long::longValue)
+            .max()
+            .orElse(100L) + 1;
 
-            long nextId = ecrList.stream()
-                    .map(ECR::getId)
-                    .filter(id -> id != null)
-                    .mapToLong(Long::longValue)
-                    .max()
-                    .orElse(100L) + 1;
+    ecr.setId(nextId);
 
-            ecr.setId(nextId);
-        }
+    // New ECR always starts in Draft
+    ecr.setStatus("Draft");
 
-        // Generate creation date if not provided
-        if (ecr.getDateCreated() == null ||
-                ecr.getDateCreated().trim().isEmpty()) {
+    // Generate creation date if not provided
+    if (ecr.getDateCreated() == null ||
+            ecr.getDateCreated().trim().isEmpty()) {
 
-            ecr.setDateCreated(
-                    java.time.LocalDate.now().toString()
-            );
-        }
-
-        ecrList.add(ecr);
+        ecr.setDateCreated(
+                java.time.LocalDate.now().toString()
+        );
     }
 
+    ecrList.add(ecr);
+}
     public void updateStatus(
         Long id,
         String newStatus,

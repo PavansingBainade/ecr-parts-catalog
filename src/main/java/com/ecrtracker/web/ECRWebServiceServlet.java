@@ -60,34 +60,133 @@ public class ECRWebServiceServlet extends HttpServlet {
         response.getWriter().write(json);
     }
 
-    // =========================
-    // POST /api/ecrs
-    // =========================
+ // =========================
+// POST /api/ecrs
+// =========================
 
-    @Override
-    protected void doPost(
-            HttpServletRequest request,
-            HttpServletResponse response)
-            throws ServletException, IOException {
+@Override
+protected void doPost(
+        HttpServletRequest request,
+        HttpServletResponse response)
+        throws ServletException, IOException {
 
-        ECR ecr =
-                objectMapper.readValue(
-                        request.getReader(),
-                        ECR.class
-                );
+    ECR ecr;
 
-        repository.save(ecr);
+    try {
 
-        String json =
-                objectMapper.writeValueAsString(ecr);
+        ecr = objectMapper.readValue(
+                request.getReader(),
+                ECR.class
+        );
 
-        response.setContentType("application/json");
-        response.setCharacterEncoding("UTF-8");
+    } catch (Exception e) {
 
-        response.setStatus(HttpServletResponse.SC_CREATED);
+        sendError(
+                response,
+                HttpServletResponse.SC_BAD_REQUEST,
+                "Invalid JSON request"
+        );
 
-        response.getWriter().write(json);
+        return;
     }
+
+    // =========================
+    // Validate required fields
+    // =========================
+
+    if (ecr.getTitle() == null ||
+            ecr.getTitle().trim().isEmpty()) {
+
+        sendError(
+                response,
+                HttpServletResponse.SC_BAD_REQUEST,
+                "title is required"
+        );
+
+        return;
+    }
+
+    if (ecr.getRequestedBy() == null ||
+            ecr.getRequestedBy().trim().isEmpty()) {
+
+        sendError(
+                response,
+                HttpServletResponse.SC_BAD_REQUEST,
+                "requestedBy is required"
+        );
+
+        return;
+    }
+
+    if (ecr.getPriority() == null ||
+            ecr.getPriority().trim().isEmpty()) {
+
+        sendError(
+                response,
+                HttpServletResponse.SC_BAD_REQUEST,
+                "priority is required"
+        );
+
+        return;
+    }
+
+    // =========================
+    // Validate priority value
+    // =========================
+
+    String priority =
+            ecr.getPriority().trim().toUpperCase();
+
+    if (!priority.equals("LOW") &&
+            !priority.equals("MEDIUM") &&
+            !priority.equals("HIGH")) {
+
+        sendError(
+                response,
+                HttpServletResponse.SC_BAD_REQUEST,
+                "priority must be LOW, MEDIUM, or HIGH"
+        );
+
+        return;
+    }
+
+    ecr.setPriority(priority);
+
+    // =========================
+    // Backend controls these
+    // =========================
+
+    // Client cannot decide the ID
+    ecr.setId(null);
+
+    // New ECR always starts as Draft
+    ecr.setStatus("Draft");
+
+    // Backend generates dateCreated
+    ecr.setDateCreated(null);
+
+    // =========================
+    // Save
+    // =========================
+
+    repository.save(ecr);
+
+    // =========================
+    // Return created ECR
+    // =========================
+
+    String json =
+            objectMapper.writeValueAsString(ecr);
+
+    response.setContentType("application/json");
+    response.setCharacterEncoding("UTF-8");
+
+    response.setStatus(
+            HttpServletResponse.SC_CREATED
+    );
+
+    response.getWriter().write(json);
+}
 
     // =========================
     // PUT /api/ecrs/{id}/status
